@@ -28,7 +28,7 @@
 
 struct {
   struct spinlock lock;
-  struct buf buf[NBUF];
+  struct buf buf[NBUF];   //结构体数组
 
   // Linked list of all buffers, through prev/next.
   // head.next is most recently used.
@@ -36,7 +36,7 @@ struct {
 } bcache;
 
 void
-binit(void)
+binit(void)   //初始化链表
 {
   struct buf *b;
 
@@ -46,7 +46,7 @@ binit(void)
   // Create linked list of buffers
   bcache.head.prev = &bcache.head;
   bcache.head.next = &bcache.head;
-  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
+  for(b = bcache.buf; b < bcache.buf+NBUF; b++){    //头插法，最近使用的在head.next
     b->next = bcache.head.next;
     b->prev = &bcache.head;
     initsleeplock(&b->lock, "buffer");
@@ -66,9 +66,9 @@ bget(uint dev, uint blockno)
   acquire(&bcache.lock);
 
   // Is the block already cached?
-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
-    if(b->dev == dev && b->blockno == blockno){
-      b->refcnt++;
+  for(b = bcache.head.next; b != &bcache.head; b = b->next){  //遍历cache链表寻找指定块
+    if(b->dev == dev && b->blockno == blockno){               //找到指定块
+      b->refcnt++;                                            //引用次数+1
       release(&bcache.lock);
       acquiresleep(&b->lock);
       return b;
@@ -78,18 +78,18 @@ bget(uint dev, uint blockno)
   // Not cached; recycle an unused buffer.
   // Even if refcnt==0, B_DIRTY indicates a buffer is in use
   // because log.c has modified it but not yet committed it.
-  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
-    if(b->refcnt == 0 && (b->flags & B_DIRTY) == 0) {
+  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){//如果在缓冲区链表找不到指定块，则在链表从后往前遍历，找到没使用的buffer
+    if(b->refcnt == 0 && (b->flags & B_DIRTY) == 0) {       //找到没使用的buffer，以下设置该buffer相应的属性
       b->dev = dev;
       b->blockno = blockno;
       b->flags = 0;
-      b->refcnt = 1;
+      b->refcnt = 1;                                        //引用次数设为1 
       release(&bcache.lock);
       acquiresleep(&b->lock);
       return b;
     }
   }
-  panic("bget: no buffers");
+  panic("bget: no buffers");    //到这里如果函数还没返回，则输出bget的失败信息
 }
 
 // Return a locked buf with the contents of the indicated block.
@@ -118,7 +118,7 @@ bwrite(struct buf *b)
 // Release a locked buffer.
 // Move to the head of the MRU list.
 void
-brelse(struct buf *b)
+brelse(struct buf *b)           //释放一块buffer
 {
   if(!holdingsleep(&b->lock))
     panic("brelse");
@@ -126,9 +126,9 @@ brelse(struct buf *b)
   releasesleep(&b->lock);
 
   acquire(&bcache.lock);
-  b->refcnt--;
-  if (b->refcnt == 0) {
-    // no one is waiting for it.
+  b->refcnt--;                  //减少对应的引用次数
+  if (b->refcnt == 0) {         //如果对应的引用次数为0，则将其从buffer链表（双链表）中摘下，然后移动到链表头部？
+    // no one is waiting for it. //不懂，不是应该移动到尾部的吗？
     b->next->prev = b->prev;
     b->prev->next = b->next;
     b->next = bcache.head.next;
