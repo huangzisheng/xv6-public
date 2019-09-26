@@ -78,7 +78,7 @@ bget(uint dev, uint blockno)
   // Not cached; recycle an unused buffer.
   // Even if refcnt==0, B_DIRTY indicates a buffer is in use
   // because log.c has modified it but not yet committed it.
-  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){//如果在缓冲区链表找不到指定块，则在链表从后往前遍历，找到没使用的buffer
+  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){//如果在缓冲区链表找不到指定块，则在链表从后往前遍历，也就是LRU，找到没使用的buffer
     if(b->refcnt == 0 && (b->flags & B_DIRTY) == 0) {       //找到没使用的buffer，以下设置该buffer相应的属性
       b->dev = dev;
       b->blockno = blockno;
