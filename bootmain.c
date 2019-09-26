@@ -10,7 +10,7 @@
 #include "x86.h"
 #include "memlayout.h"
 
-#define SECTSIZE  512
+#define SECTSIZE  512             //一个扇区512字节
 
 void readseg(uchar*, uint, uint);
 
@@ -25,9 +25,9 @@ bootmain(void)
   elf = (struct elfhdr*)0x10000;  // scratch space
 
   // Read 1st page off disk
-  readseg((uchar*)elf, 4096, 0);
+  readseg((uchar*)elf, 4096, 0);  //从磁盘读取第一页数据
 
-  // Is this an ELF executable?
+  // Is this an ELF executable?   //判断第一页存放的是不是ELF格式的文件
   if(elf->magic != ELF_MAGIC)
     return;  // let bootasm.S handle error
 
