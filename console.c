@@ -1,6 +1,7 @@
 // Console input and output.
 // Input is from the keyboard or serial port.
 // Output is written to the screen and serial port.
+//控制台的输入和输出
 
 #include "types.h"
 #include "defs.h"
@@ -22,21 +23,23 @@ static int panicked = 0;
 static struct {
   struct spinlock lock;
   int locking;
-} cons;
+} cons;   //全局变量，用来表示啥
 
+//输出base进制表示的整数xx，sign表示符号？
 static void
 printint(int xx, int base, int sign)
 {
   static char digits[] = "0123456789abcdef";
-  char buf[16];
+  char buf[16];   //16够吗？如果表示的整数过大咋整？
   int i;
   uint x;
 
-  if(sign && (sign = xx < 0))
+  if(sign && (sign = xx < 0))   //这是啥操作？不能直接判断xx和0的关系来判定符号吗
     x = -xx;
   else
     x = xx;
 
+  //将结果存储在buf中，逆序
   i = 0;
   do{
     buf[i++] = digits[x % base];
@@ -45,11 +48,13 @@ printint(int xx, int base, int sign)
   if(sign)
     buf[i++] = '-';
 
+  //因为是逆序存储，所以输出的时候从后往前输出每个字符
   while(--i >= 0)
     consputc(buf[i]);
 }
 //PAGEBREAK: 50
 
+//输出到控制台,只支持十进制整数、十六进制整数、指针和字符串格式
 // Print to the console. only understands %d, %x, %p, %s.
 void
 cprintf(char *fmt, ...)
@@ -65,13 +70,19 @@ cprintf(char *fmt, ...)
   if (fmt == 0)
     panic("null fmt");
 
-  argp = (uint*)(void*)(&fmt + 1);
-  for(i = 0; (c = fmt[i] & 0xff) != 0; i++){
-    if(c != '%'){
+  //写得有点难懂，解释一下，大概就是实现格式化输出
+  //例如要输出 "a + b = %d", num
+  //fmt应该是指向字符串数组得指针（char**）,不懂为啥这里就写char*
+  //这样一来，下面得"&fmt + 1"就表示指向num的指针
+  argp = (uint*)(void*)(&fmt + 1);    
+  for(i = 0; (c = fmt[i] & 0xff) != 0; i++){    //fmt[i] % 0xff表示取出fmt[i]的低8位
+    if(c != '%'){   
       consputc(c);
-      continue;
+      continue;   //如果当前字符不是%，则直接输出，然后跳过下面的处理，继续下一个字符的判断
     }
-    c = fmt[++i] & 0xff;
+
+    //到这里就意味着当前字符是%，表示接下来要输出相应格式的内容,根据下一字符是d、x、p之类的输出argp相应的格式
+    c = fmt[++i] & 0xff;    //取出下一个字符
     if(c == 0)
       break;
     switch(c){
@@ -80,7 +91,7 @@ cprintf(char *fmt, ...)
       break;
     case 'x':
     case 'p':
-      printint(*argp++, 16, 0);
+      printint(*argp++, 16, 0);   //用十六进制输出可表示指针(也就是地址)
       break;
     case 's':
       if((s = (char*)*argp++) == 0)
