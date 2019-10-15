@@ -57,7 +57,7 @@ struct cmd *parsecmd(char*);
 void
 runcmd(struct cmd *cmd)
 {
-  int p[2];
+  int p[2];   //做为pipe调用的参数
   struct backcmd *bcmd;
   struct execcmd *ecmd;
   struct listcmd *lcmd;
@@ -71,7 +71,7 @@ runcmd(struct cmd *cmd)
   default:
     panic("runcmd");
 
-  case EXEC:
+  case EXEC:    //可执行命令
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
       exit();
@@ -79,9 +79,10 @@ runcmd(struct cmd *cmd)
     printf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
 
-  case REDIR:
+  case REDIR:   //重定向命令
     rcmd = (struct redircmd*)cmd;
-    close(rcmd->fd);
+    close(rcmd->fd);          //关闭标准输入/输出(取决于重定向操作的类型)
+    //用指定的模式打开要打开的文件作为新的标准输入/输出
     if(open(rcmd->file, rcmd->mode) < 0){
       printf(2, "open %s failed\n", rcmd->file);
       exit();
@@ -89,7 +90,7 @@ runcmd(struct cmd *cmd)
     runcmd(rcmd->cmd);
     break;
 
-  case LIST:
+  case LIST:    //？
     lcmd = (struct listcmd*)cmd;
     if(fork1() == 0)
       runcmd(lcmd->left);
@@ -97,22 +98,26 @@ runcmd(struct cmd *cmd)
     runcmd(lcmd->right);
     break;
 
-  case PIPE:
+  case PIPE:    //管道命令
     pcmd = (struct pipecmd*)cmd;
     if(pipe(p) < 0)
       panic("pipe");
     if(fork1() == 0){
-      close(1);
-      dup(p[1]);
+      close(1);   //先关闭标准输出再dup
+      dup(p[1]);  //生成一个新的fd指向p[1]，会把标准输出定向到p[1]所指文件，即管道写入端
+      //去掉管道对端口的引用
       close(p[0]);
       close(p[1]);
+      //左边的标准输入不变，标准输出流入管道写入端
       runcmd(pcmd->left);
     }
     if(fork1() == 0){
-      close(0);
-      dup(p[0]);
+      close(0);   //先关闭标准输入再dup
+      dup(p[0]);  //生成一个新的fd指向p[0]，会把标准输入定向到 p[0] 所指文件，即管道读取端
+      //去掉管道对端口的引用
       close(p[0]);
       close(p[1]);
+      //右边的标准输出不变，标准输入从管道读取
       runcmd(pcmd->right);
     }
     close(p[0]);
@@ -121,7 +126,7 @@ runcmd(struct cmd *cmd)
     wait();
     break;
 
-  case BACK:
+  case BACK:    //？
     bcmd = (struct backcmd*)cmd;
     if(fork1() == 0)
       runcmd(bcmd->cmd);
@@ -130,13 +135,14 @@ runcmd(struct cmd *cmd)
   exit();
 }
 
+//获取命令
 int
 getcmd(char *buf, int nbuf)
 {
   printf(2, "$ ");
   memset(buf, 0, nbuf);
-  gets(buf, nbuf);
-  if(buf[0] == 0) // EOF
+  gets(buf, nbuf);    //读取nbuf个字符到buf中
+  if(buf[0] == 0)     // EOF
     return -1;
   return 0;
 }
@@ -155,15 +161,19 @@ main(void)
     }
   }
 
+  //循环调用getcmd获取输入的命令
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
+      //如果只是cd命令，则切换到指定文件夹后继续等待命令
+      //cd命令再父进程完成就行，不需要fork子进程来完成
       // Chdir must be called by the parent, not the child.
-      buf[strlen(buf)-1] = 0;  // chop \n
+      buf[strlen(buf)-1] = 0;  // chop \n  把回车键改成'\0'
       if(chdir(buf+3) < 0)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
     }
+    //如果不是cd命令，则fork出子进程运行命令
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();
@@ -171,6 +181,7 @@ main(void)
   exit();
 }
 
+//输出s指向的错误信息
 void
 panic(char *s)
 {
@@ -178,6 +189,7 @@ panic(char *s)
   exit();
 }
 
+//fork一个子进程，如果失败则将错误信息输出到标准stderr
 int
 fork1(void)
 {
@@ -190,7 +202,7 @@ fork1(void)
 }
 
 //PAGEBREAK!
-// Constructors
+// Constructors  几个命令的构造器
 
 struct cmd*
 execcmd(void)
@@ -203,6 +215,7 @@ execcmd(void)
   return (struct cmd*)cmd;
 }
 
+//重定向命令结构体的构造器
 struct cmd*
 redircmd(struct cmd *subcmd, char *file, char *efile, int mode, int fd)
 {
@@ -211,11 +224,11 @@ redircmd(struct cmd *subcmd, char *file, char *efile, int mode, int fd)
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
   cmd->type = REDIR;
-  cmd->cmd = subcmd;
-  cmd->file = file;
-  cmd->efile = efile;
-  cmd->mode = mode;
-  cmd->fd = fd;
+  cmd->cmd = subcmd;    //需要重定向操作的命令
+  cmd->file = file;     //需要的读取或输出的文件
+  cmd->efile = efile;   //暂时不知道作用
+  cmd->mode = mode;     //如果是"<"，则是O_RDONLY模式打开；如果是">"，则是O_WRONLY|O_CREAT|O_TRUNC模式打开
+  cmd->fd = fd;         //如果是"<",则fd是0, 表示标准输入(后续操作会关闭表组合你输入)，否则fd是1，表示标准输出(后续操作会关闭标准输出)
   return (struct cmd*)cmd;
 }
 
@@ -227,8 +240,8 @@ pipecmd(struct cmd *left, struct cmd *right)
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
   cmd->type = PIPE;
-  cmd->left = left;
-  cmd->right = right;
+  cmd->left = left;   //管道左边的命令
+  cmd->right = right; //管道右边的命令
   return (struct cmd*)cmd;
 }
 
@@ -257,7 +270,7 @@ backcmd(struct cmd *subcmd)
   return (struct cmd*)cmd;
 }
 //PAGEBREAK!
-// Parsing
+// Parsing  下面是解析的部分
 
 char whitespace[] = " \t\r\n\v";
 char symbols[] = "<|>&;()";
